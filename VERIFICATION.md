@@ -32,3 +32,9 @@ Optimization: JS module syntax check, 6 converter tests and 3 CAD mapping tests 
 Gerber reports now export unassigned island polygon rings with layer and stable report IDs; a hole-preservation test verifies exported area. A loopback GET /api/pcb-check serves the report only if all three source hashes still match. A report test verifies changed-source and unexpected-path rejection. Browser verified 96 sorted entries, top/bottom selection, polygon highlighting, and clearing restores components/camera without editing firmware or six saved wires. Underside fill lighting improves inspection. No automatic fault verdict or current simulation is added.
 
 Final follow-up regression: all 46 Python tests and 18 Node tests passed. Module syntax and git diff whitespace checks passed.
+
+## Copper provenance follow-up
+
+7 provenance tests and 18 Gerber tests passed. All 96 unassigned network clusters remain listed:88 source copper-text associations,8 artwork associations covering6 unnamed pads. Source drill records confirm SW1 planned1mm holes; no physical drilling simulation added. Matching is same-layer path/footprint geometry, not a text bounding box. Extra copper and unsupported formats remain unresolved; associations never remove conflict/open findings. UI adds source IDs, coverage, pad identity/text and planned drill; source PCB hash also checked against loaded CAD metadata.
+
+Follow-up focused regression:7 provenance +18 Gerber +12 source geometry +1 report tests passed (38 total). JS module syntax and diff checks passed. Browser verified SW1-1 drill annotation, U2-106 pad identity, and copper text784520A;0console errors. Closed copper-font contours now render as filled source glyphs, and the inspector is taller for readable evidence.

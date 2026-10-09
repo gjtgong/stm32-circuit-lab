@@ -74,6 +74,14 @@ class ActualGerberTests(unittest.TestCase):
   self.assertFalse(any(c['net']=='GND' for c in r['unconnectedCandidates']))
   self.assertEqual(r['summary']['missingSeeds'],0);self.assertEqual(r['summary']['partialSeeds'],0)
   self.assertEqual(self.counts[1]['regions'],447);self.assertEqual(self.counts[2]['regions'],522)
+ def test_actual_sources_explain_artwork_but_keep_review(self):
+  r=audit_gerber(self.board,self.images)
+  self.assertEqual(r['summary']['unassignedClusters'],96)
+  self.assertEqual(r['provenanceSummary']['categories'],{'unnamed-pad':8,'copper-text':88})
+  self.assertEqual(r['provenanceSummary']['unsupportedSourceGraphics'],[])
+  self.assertTrue(all(c['provenance']['requiresReview'] for c in r['unassignedClusters']))
+  sw=next(c for c in r['unassignedClusters'] if c['id']=='copper-343')
+  self.assertTrue(any(e.get('ref')=='SW1' and e['number']=='1' and abs(e['plannedDrillMm']-1)<.001 for e in sw['provenance']['evidence']))
  def test_injected_gerber_bridge_detected(self):
   pads=sorted([p for p in self.board['pads'] if p.get('ref')=='U2' and p.get('net')],key=lambda p:int(p['number']))
   a,b=pads[:2];images=dict(self.images)

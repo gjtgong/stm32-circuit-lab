@@ -538,7 +538,7 @@ function addCadSvgGraphic(graphic, index) {
   if (![1,2,3,4].includes(layer) || !graphic.pathRaw) return;
   const silk = layer === 3 || layer === 4;
   const side = cadLayerName(layer);
-  const filled = (silk && graphic.kind === 'text' && /z/i.test(graphic.pathRaw)) || graphic.kind === 'solid-region';
+  const filled = (graphic.kind === 'text' && /z/i.test(graphic.pathRaw)) || graphic.kind === 'solid-region';
   // COPPERAREA is a pour boundary, not the final cleared copper. Display its
   // outline only; final solid regions carry the generated copper geometry.
   const color = silk ? 0xcbd6cb : side === 'top' ? 0xb7934c : 0xa56c3b;
@@ -1594,17 +1594,26 @@ function createPcbAuditPanel() {
   if (!isCadBoard()) return;
   const panel = document.createElement('details');
   panel.className = 'pcb-audit-panel';
-  panel.innerHTML = '<summary>PCB 铜层检查</summary><div class="pcb-audit-body"><p class="pcb-audit-status">正在读取本地报告…</p><label>定位未匹配铜块<select aria-label="定位未匹配铜块" disabled><option value="">请选择铜块</option></select></label><p class="pcb-audit-selection">选中后临时隐藏元件，显示真实铜轮廓。</p><div class="pcb-audit-actions"><button type="button" class="pcb-audit-clear">清除高亮</button><button type="button" class="pcb-audit-reload">刷新检查</button></div><p>未匹配网络 ≠ 已确认短路。当前仅做铜几何连通性检查，不代表整板可用。</p></div>';
+  panel.innerHTML = '<summary>PCB 铜层检查</summary><div class="pcb-audit-body"><p class="pcb-audit-status">正在读取本地报告…</p><label>定位未匹配铜块<select aria-label="定位未匹配铜块" disabled><option value="">请选择铜块</option></select></label><p class="pcb-audit-selection">选中后临时隐藏元件，显示真实铜轮廓。</p><p class="pcb-audit-evidence"></p><div class="pcb-audit-actions"><button type="button" class="pcb-audit-clear">清除高亮</button><button type="button" class="pcb-audit-reload">刷新检查</button></div><p>未匹配网络 ≠ 已确认短路。当前仅做铜几何连通性检查，不代表整板可用。</p></div>';
   root.append(panel);
   const select = panel.querySelector('select');
   const status = panel.querySelector('.pcb-audit-status');
   const detail = panel.querySelector('.pcb-audit-selection');
+  const evidence = panel.querySelector('.pcb-audit-evidence');
+  const categories = {'unnamed-pad':'无网焊盘','copper-text':'铜层文字',mixed:'混合来源',unresolved:'来源待核查'};
   let clusters = [];
-  const clear = () => { clearPcbAuditHighlight();select.value='';detail.textContent='选中后临时隐藏元件，显示真实铜轮廓。'; };
+  const clear = () => { clearPcbAuditHighlight();select.value='';evidence.textContent='';detail.textContent='选中后临时隐藏元件，显示真实铜轮廓。'; };
   select.addEventListener('change', () => {
     const cluster = clusters.find(item => item.id === select.value);
     if (!cluster) { clear();return; }
     highlightPcbCluster(cluster);
+    const provenance = cluster.provenance;
+    if (provenance) {
+      const sources = provenance.evidence.map(item => item.kind === 'unnamed-pad'
+        ? `${item.ref || '焊盘'}-${item.number} (${item.id})${item.plannedDrillMm > 0 ? `，计划孔径 ${item.plannedDrillMm.toFixed(3)} mm` : ''}`
+        : `铜层文字“${item.text.replaceAll('\\n',' / ')}” (${item.id})`);
+      evidence.textContent = `来源：${categories[provenance.category] || '待核查'} · 覆盖 ${(provenance.coveredFraction*100).toFixed(1)}% · ${sources.join('；') || '无几何匹配'}。仅作来源关联，仍需核查网络和电气设计。`;
+    } else evidence.textContent = '报告尚无来源证据，请重新生成检查报告。';
     detail.textContent = `${cluster.id} · ${cluster.geometry[0].layer === 2 ? '底层' : '顶层'} · ${cluster.areaMm2.toFixed(6)} mm² · 粉色铜轮廓，尚待核查`;
   });
   const load = async () => {
@@ -1615,9 +1624,10 @@ function createPcbAuditPanel() {
       const report = await response.json();
       if (!response.ok) throw new Error(report.hint || report.error || '无法读取检查报告');
       if (Math.abs(report.boardSizeMm.width-CAD_WIDTH_MM)>.001 || Math.abs(report.boardSizeMm.height-CAD_HEIGHT_MM)>.001) throw new Error('报告板尺寸与当前板不符，请重新生成');
+      if (CAD.meta?.sourceSha256 && report.inputHashes?.[CAD.meta.sourceDocument] !== CAD.meta.sourceSha256) throw new Error('报告与当前3D源数据不符，请重新转换板数据');
       clusters = [...report.unassignedClusters].sort((a,b)=>b.areaMm2-a.areaMm2);
-      status.textContent = `网络冲突 ${report.summary.netConflictClusters} · 断连候选 ${report.summary.unconnectedNets} · 未匹配 ${clusters.length}`;
-      for (const cluster of clusters) select.add(new Option(`${cluster.id} · ${cluster.geometry[0].layer === 2 ? '底层' : '顶层'} · ${cluster.areaMm2.toFixed(3)} mm²`,cluster.id));
+      status.textContent = `网络冲突 ${report.summary.netConflictClusters} · 断连候选 ${report.summary.unconnectedNets} · 未匹配网络 ${clusters.length}`;
+      for (const cluster of clusters) select.add(new Option(`${cluster.id} · ${cluster.geometry[0].layer === 2 ? '底层' : '顶层'} · ${cluster.areaMm2.toFixed(3)} mm² · ${categories[cluster.provenance?.category] || '来源待核查'}`,cluster.id));
       select.disabled=false;
     } catch(error) { status.textContent=error.message; }
   };
