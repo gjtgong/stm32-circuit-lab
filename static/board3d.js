@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { SVGLoader } from './vendor/SVGLoader.js';
+import { drillContour, padContours } from './cad-drills.mjs';
 
 /*
  * CAD-driven 3D renderer for the selected STM32F103ZET6 board.
@@ -484,13 +485,13 @@ function cadEndpointForPad(pad) {
 }
 
 function cadPadGeometry(pad) {
-  const width = Math.max(0.08, Number(pad.width) || 0.8) * CAD_MM_TO_WORLD;
-  const height = Math.max(0.08, Number(pad.height) || Number(pad.width) || 0.8) * CAD_MM_TO_WORLD;
-  const shape = String(pad.shape || '').toLowerCase();
-  if (shape.includes('ellipse') || shape.includes('circle') || shape.includes('round')) {
-    return new THREE.CylinderGeometry(Math.max(width, height) / 2, Math.max(width, height) / 2, 0.46, 16);
-  }
-  return new THREE.BoxGeometry(width, 0.46, height);
+  const contours = padContours(pad);
+  const shape = new THREE.Shape(contours.outer.map(([x,y]) => new THREE.Vector2(x*CAD_MM_TO_WORLD,-y*CAD_MM_TO_WORLD)));
+  if (contours.hole.length) shape.holes.push(new THREE.Path(contours.hole.map(([x,y]) => new THREE.Vector2(x*CAD_MM_TO_WORLD,-y*CAD_MM_TO_WORLD))));
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth:0.46, bevelEnabled:false, curveSegments:32 });
+  geometry.translate(0,0,-0.23);
+  geometry.rotateX(Math.PI/2);
+  return geometry;
 }
 
 function cadPadPosition(pad, side = cadLayerName(pad?.layer)) {
@@ -509,7 +510,7 @@ function addCadPad(pad) {
       cadLayerGroup(side),
       { type: 'cad-pad', padId: pad.id, layer: side, endpointId: endpointId || undefined, canonical: endpointId ? BOARD.normalizeEndpoint?.(endpointId) : undefined, net: pad.net || null, ref: pad.ref || '', label: `${pad.ref || 'pad'} · ${pad.number || pad.id}${pad.net ? ` · ${pad.net}` : ''}`, source: 'PE.JADO EasyEDA PCB' }
     );
-    padObject.rotation.y = -THREE.MathUtils.degToRad(Number(pad.rotation) || 0);
+    padObject.rotation.y = THREE.MathUtils.degToRad(Number(pad.rotation) || 0);
     cadPadTargets.push(padObject);
     staticTargets.push(padObject);
     objects.push(padObject);
@@ -580,26 +581,15 @@ function cadPolylineCurve(points) {
 }
 
 function addCadGraphic(graphic, index) {
-  if (graphic.visible === false) return;
+  if (graphic.visible === false || graphic.kind === 'hole') return;
+  // A source cutout removes copper; it must never be painted as a solid face.
+  if (graphic.kind === 'solid-region' && ['cutout','npth'].includes(graphic.sourceRaw?.split('~')[4])) return;
   if (graphic.pathRaw) { addCadSvgGraphic(graphic, index); return; }
   if (![1,2,3,4].includes(Number(graphic.layer))) return;
   const points = cadGraphicPoints(graphic);
   const kind = String(graphic?.kind || '').toLowerCase();
   const layer = cadLayerName(graphic?.layer);
   const parent = cadLayerGroup(layer);
-  if (kind === 'hole' && Number.isFinite(Number(graphic?.x)) && Number.isFinite(Number(graphic?.y))) {
-    // Preserve source drill locations as visible top/bottom annuli.  The
-    // board extrusion intentionally remains a single solid mesh; the dark
-    // centre and copper rim provide a truthful geometric inspection cue
-    // without pretending this renderer performs a boolean/DRC operation.
-    const radius = Math.max(0.18, Number(graphic.diameter) || 1) * CAD_MM_TO_WORLD / 2;
-    for (const [side, group, y] of [['top', cadTopGroup, 0.99], ['bottom', cadBottomGroup, -0.99]]) {
-      const rim = mesh(new THREE.CylinderGeometry(radius, radius, 0.16, 24), material(0x9a6a28, { metalness: 0.78, roughness: 0.32 }), cadToWorld(graphic.x, graphic.y, y), group, { type: 'cad-hole-rim', graphicIndex: index, side, ref: graphic.ref || '', label: `${graphic.ref || 'CAD'} through-hole · ${Number(graphic.diameter || 0).toFixed(2)} mm`, source: 'PE.JADO EasyEDA PCB' });
-      const centre = mesh(new THREE.CylinderGeometry(radius * 0.72, radius * 0.72, 0.18, 24), material(0x09131b, { roughness: 0.9, metalness: 0.02 }), cadToWorld(graphic.x, graphic.y, y + (side === 'top' ? 0.1 : -0.1)), group, { type: 'cad-hole', graphicIndex: index, side, ref: graphic.ref || '', label: `${graphic.ref || 'CAD'} through-hole`, source: 'PE.JADO EasyEDA PCB' });
-      staticTargets.push(rim, centre);
-    }
-    return;
-  }
   if (kind === 'circle' && Number.isFinite(Number(graphic?.x)) && Number.isFinite(Number(graphic?.y))) {
     const radius = Math.max(0.12, Number(graphic.diameter) || 1) * CAD_MM_TO_WORLD / 2;
     const width = Math.max(0.04, Number(graphic.width) || 0.2) * CAD_MM_TO_WORLD / 2;
@@ -823,16 +813,15 @@ function buildCadBoard() {
   outline.slice(1).forEach(point => shape.lineTo((point[0] - CAD_WIDTH_MM / 2) * CAD_MM_TO_WORLD, -(point[1] - CAD_HEIGHT_MM / 2) * CAD_MM_TO_WORLD));
   shape.closePath();
   // Source drill diameters cut real holes through the PCB substrate.
-  const drills = [...(CAD.pads || []), ...(CAD.vias || [])];
+  const drills = [...(CAD.pads || []), ...(CAD.vias || []), ...(CAD.graphics || []).filter(g => g.kind === 'hole')];
   const seenDrills = new Set();
   for (const drill of drills) {
-    const diameter = Number(drill.drill);
+    const diameter = Number(drill.drill ?? drill.diameter);
     if (!(diameter > 0) || !Number.isFinite(drill.x) || !Number.isFinite(drill.y)) continue;
-    const key = `${drill.x}:${drill.y}:${diameter}`;
+    const key = JSON.stringify(drillContour(drill));
     if (seenDrills.has(key)) continue;
     seenDrills.add(key);
-    const hole = new THREE.Path();
-    hole.absarc((drill.x-CAD_WIDTH_MM/2)*CAD_MM_TO_WORLD, -(drill.y-CAD_HEIGHT_MM/2)*CAD_MM_TO_WORLD, diameter*CAD_MM_TO_WORLD/2, 0, Math.PI*2, true);
+    const hole = new THREE.Path(drillContour(drill).map(([x,y]) => new THREE.Vector2((x-CAD_WIDTH_MM/2)*CAD_MM_TO_WORLD, -(y-CAD_HEIGHT_MM/2)*CAD_MM_TO_WORLD)));
     shape.holes.push(hole);
   }
   const pcb = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 1.6, bevelEnabled: false }), material(0x126047, { roughness: 0.76, metalness: 0.05 }));
@@ -844,15 +833,13 @@ function buildCadBoard() {
   const padById = new Map((CAD.pads || []).map(pad => [pad.id, pad]));
   for (const pad of CAD.pads || []) addCadPad(pad);
   for (const via of CAD.vias || []) {
-    const diameter = Math.max(0.35, Number(via.diameter) || 1.0) * CAD_MM_TO_WORLD;
-    const drill = Math.max(0.12, Number(via.drill) || diameter * 0.42) * CAD_MM_TO_WORLD;
     const pointTop = cadToWorld(via.x, via.y, 1.13);
     const pointBottom = cadToWorld(via.x, via.y, -1.13);
     for (const [group, point, side] of [[cadTopGroup, pointTop, 'top'], [cadBottomGroup, pointBottom, 'bottom']]) {
-      const ring = mesh(new THREE.CylinderGeometry(diameter / 2, diameter / 2, 0.22, 12), material(COLORS.copper, { metalness: 0.8, roughness: 0.28 }), point, group, { type: 'cad-via', viaId: via.id, net: via.net || null, label: `${side} via · ${via.net || 'unnamed net'}`, source: 'PE.JADO EasyEDA/Gerber' });
+      const ring = mesh(cadPadGeometry({x:via.x,y:via.y,width:Number(via.diameter),height:Number(via.diameter),shape:'ELLIPSE',drill:Number(via.drill),rotation:0}), material(COLORS.copper, { metalness: 0.8, roughness: 0.28 }), point, group, { type: 'cad-via', viaId: via.id, net: via.net || null, label: `${side} via · ${via.net || 'unnamed net'}`, source: 'PE.JADO EasyEDA/Gerber' });
       cadPadTargets.push(ring);
       staticTargets.push(ring);
-      mesh(new THREE.CylinderGeometry(drill / 2, drill / 2, 0.25, 10), material(0x0b151d, { roughness: 0.84 }), new THREE.Vector3(point.x, point.y + (side === 'top' ? 0.02 : -0.02), point.z), group, { type: 'cad-via-drill', viaId: via.id, net: via.net || null, label: `${side} via drill` });
+
     }
   }
   for (const track of CAD.tracks || []) {
@@ -1635,6 +1622,9 @@ function createPcbAuditPanel() {
       if (CAD.meta?.sourceSha256 && report.inputHashes?.[CAD.meta.sourceDocument] !== CAD.meta.sourceSha256) throw new Error('报告与当前3D源数据不符，请重新转换板数据');
       clusters = [...report.unassignedClusters].sort((a,b)=>b.areaMm2-a.areaMm2);
       status.textContent = `网络冲突 ${report.summary.netConflictClusters} · 断连候选 ${report.summary.unconnectedNets} · 未匹配网络 ${clusters.length}`;
+      const pth = report.gerberCoverage?.['Gerber_Drill_PTH.DRL'];
+      const npth = report.gerberCoverage?.['Gerber_Drill_NPTH.DRL'];
+      if (pth && npth) status.textContent += `。已扣除 ${pth.hits+npth.hits} 个钻孔（含 ${pth.slots+npth.slots} 个槽孔）`;
       for (const cluster of clusters) select.add(new Option(`${cluster.id} · ${cluster.geometry[0].layer === 2 ? '底层' : '顶层'} · ${cluster.areaMm2.toFixed(3)} mm² · ${categories[cluster.provenance?.category] || '来源待核查'}`,cluster.id));
       select.disabled=false;
       try {

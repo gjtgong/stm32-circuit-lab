@@ -44,3 +44,9 @@ Follow-up focused regression:7 provenance +18 Gerber +12 source geometry +1 repo
 17 schematic tests +2 report freshness tests passed. Local source graph:366 pins,504 wiresegments,286 labels,6NC markers;364 matched PCB terminals,0 network differences in matched subset.6unnamedpads have explicit NC intent. BOOT1/BOOT mapped only by same source component ID;X1:1/2 and16unreferencedpads remain unverified;3alias groups retained for review. In-memory real PCB pin-net change and real NC marker deletion detected. No device-datasheet/electrical/ERC verdict. API serves source-hash-verified report; browser selected U2-106 and showed NC intent and unresolved summary.
 
 Final regression:72 Python +18 Node tests passed; JS syntax/diff checks passed. Browser U2-106/SW1 NC evidence and clearing/reselecting verified,0console errors; existing code and6wires preserved.
+
+## Drill geometry follow-up
+
+77 Python and 21 Node tests passed, including actual source/Excellon slot and NPTH correspondence, a drilled-away trace causing an open, and a slot-end trace avoiding a false pad short. Browser verified open mounting holes, corrected round silkscreen size and drilled pad meshes; saved code and six wires retained. Source circle radius conversion follows the official EasyEDA PCB format; independent HOLE radii verified against NPTH manufacturing output.
+
+CLI now subtracts219 PTH hits (including7 G85 slots) and7 NPTH hits from both Gerber images before connectivity audit. Known-network findings remain0 conflicts/0 opens/0 missing or partial seeds;96 unassigned clusters remain listed,22.466415mm² after drilling. Report hash guard now includes both drill files and rejects changes to any of five inputs. Strict bounded Excellon parser rejects unsupported modes/routing/units and incomplete files. No plating/tolerance/current/thermal or whole-board safety verdict. X1 identity and16 unreferenced pads remain unresolved.

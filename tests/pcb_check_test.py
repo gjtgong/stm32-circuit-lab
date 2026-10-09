@@ -46,6 +46,12 @@ class GeometryTests(unittest.TestCase):
  def test_invalid_threshold_rejected(self):
   for x in [-1,float('nan'),float('inf')]:
    with self.assertRaises(ValueError):audit(board(),x)
+ def test_slot_end_is_removed_instead_of_false_short(self):
+  p=dict(id='slot',net='A',x=0,y=0,layer=11,width=1.1,height=2.4,shape='OVAL',rotation=180,drill=.6,plated='Y',slotLength=1.8,slotPointsMM=[[0,-.6],[0,.6]])
+  t=track('inside-slot','B',[(-.03,.7),(.03,.7)],width=.03)
+  self.assertEqual(audit(board([t],[p]))['summary']['shortCandidates'],0)
+  del p['slotPointsMM'];del p['slotLength']
+  self.assertGreater(audit(board([t],[p]))['summary']['shortCandidates'],0)
 class ActualBoardFaultTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls):

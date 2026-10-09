@@ -313,9 +313,9 @@ def _path_record(
             "yRaw": y,
             "x": transform([x, y])[0],
             "y": transform([x, y])[1],
-            "diameter": _mm_length(fields[3]),
+            "diameter": 2 * (_mm_length(fields[3]) or 0),
             "width": _mm_length(fields[4]),
-            "diameterRaw": _number(fields[3]),
+            "radiusRaw": _number(fields[3]),
             "widthRaw": _number(fields[4]),
         })
         return graphic
@@ -328,8 +328,8 @@ def _path_record(
             "yRaw": y,
             "x": transform([x, y])[0],
             "y": transform([x, y])[1],
-            "diameter": _mm_length(fields[3]),
-            "diameterRaw": _number(fields[3]),
+            "diameter": 2 * (_mm_length(fields[3]) or 0),
+            "radiusRaw": _number(fields[3]),
         })
         return graphic
 
@@ -403,6 +403,13 @@ def _parse_pad(record: Mapping[str, Any], transform, component_id: str | None, r
     }
     if component_id:
         result["componentId"] = component_id
+    slot_length = _mm_length(p[13]) if len(p) > 13 else 0
+    if slot_length and slot_length > 0:
+        points = _track_points(p[14] if len(p) > 14 else "")
+        if len(points) != 2:
+            raise ValueError(f"Unsupported slot centerline: {result['id']}")
+        result["slotLength"] = slot_length
+        result["slotPointsMM"] = [transform(point) for point in points]
     # These fields distinguish plated, hole and layer details without asking
     # the renderer to reinterpret the positional source record.
     if len(p) > 15:

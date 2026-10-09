@@ -53,7 +53,12 @@ def source_copper(board):
         geom = affinity.rotate(geom, float(pad.get('rotation', 0)), origin=(0,0))
         geom = affinity.translate(geom, pad['x'], pad['y'])
         drill = float(pad.get('drill') or 0)
-        if drill: geom = geom.difference(Point(pad['x'],pad['y']).buffer(drill/2,quad_segs=64))
+        if drill:
+            points = pad.get('slotPointsMM')
+            if pad.get('slotLength') and (not points or len(points) != 2):
+                raise ValueError(f"Unsupported slot centerline: {pad['id']}")
+            hole = LineString(points) if points else Point(pad['x'],pad['y'])
+            geom = geom.difference(hole.buffer(drill/2,quad_segs=64))
         through = pad['layer'] == 11
         add(pad, 'pad', geom, [1,2] if through else [pad['layer']], True, through and pad.get('plated') == 'Y' and drill > 0)
     for via in board.get('vias', []):

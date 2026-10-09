@@ -85,12 +85,24 @@ def main():
     for layer, filename in ((1, 'Gerber_TopLayer.GTL'), (2, 'Gerber_BottomLayer.GBL')):
         images[layer], counts = parse_copper((args.gerber_dir / filename).read_text())
         coverage[filename] = dict(counts, copperAreaMm2=round(images[layer].area, 6))
+    from excellon_drill import parse_drills, remove_drills
+    drills = []
+    drill_files = ['Gerber_Drill_PTH.DRL', 'Gerber_Drill_NPTH.DRL']
+    for filename in drill_files:
+        hits = parse_drills((args.gerber_dir / filename).read_text())
+        drills.extend(hits)
+        coverage[filename] = {'hits':len(hits), 'slots':sum(h['slot'] for h in hits)}
+    images = remove_drills(images, drills)
+    for layer, filename in ((1, 'Gerber_TopLayer.GTL'), (2, 'Gerber_BottomLayer.GBL')):
+        coverage[filename]['afterDrillingAreaMm2'] = round(images[layer].area, 6)
     result = audit_gerber(board, images)
+    result['basis'] += '; PTH and NPTH drill material removed from both layers'
+    result['limitations'].append('Ideal nominal drill geometry only; no plating thickness, tolerances, annular-ring or hole-clearance manufacturing verdict.')
     result['gerberCoverage'] = coverage
     import hashlib
     import os
     base = Path(__file__).resolve().parents[1]
-    inputs = [args.source, args.gerber_dir / 'Gerber_TopLayer.GTL', args.gerber_dir / 'Gerber_BottomLayer.GBL']
+    inputs = [args.source, args.gerber_dir / 'Gerber_TopLayer.GTL', args.gerber_dir / 'Gerber_BottomLayer.GBL', *(args.gerber_dir / name for name in drill_files)]
     result['inputHashes'] = {os.path.relpath(path.resolve(), base):hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs}
     result['boardSizeMm'] = {'width':board['meta']['widthMm'], 'height':board['meta']['heightMm']}
     args.output.parent.mkdir(parents=True, exist_ok=True)

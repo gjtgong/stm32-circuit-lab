@@ -119,6 +119,11 @@ class OpenBoardImportTests(unittest.TestCase):
         self.assertAlmostEqual(via['drill'], 0.305, delta=0.001)
         pad = next(p for p in self.data['pads'] if p['id'] == 'gge18532')
         self.assertAlmostEqual(pad['drill'], 1.083, delta=0.002)
+        hole = next(g for g in self.data['graphics'] if g['id'] == 'gge22619')
+        self.assertAlmostEqual(hole['diameter'], 3.101, delta=0.002)
+        circle = next(g for g in self.data['graphics'] if g['id'] == 'gge22616')
+        self.assertAlmostEqual(circle['diameter'], 2 * 11.024 * 0.254, places=5)
+        self.assertGreater(circle['diameter'], hole['diameter'])
 
     def test_umd_module_contains_same_counts(self) -> None:
         with tempfile.TemporaryDirectory(prefix="open-board-import-") as directory:

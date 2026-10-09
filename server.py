@@ -55,7 +55,9 @@ def load_pcb_report() -> dict:
     return load_verified_report('gerber-check.json', {
         'references/open-board/EasyEDA_F103ZET6.Pcb.api.json',
         'references/open-board/gerber/Gerber_TopLayer.GTL',
-        'references/open-board/gerber/Gerber_BottomLayer.GBL'})
+        'references/open-board/gerber/Gerber_BottomLayer.GBL',
+        'references/open-board/gerber/Gerber_Drill_PTH.DRL',
+        'references/open-board/gerber/Gerber_Drill_NPTH.DRL'})
 
 
 def load_schematic_report() -> dict:

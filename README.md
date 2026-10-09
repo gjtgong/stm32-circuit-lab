@@ -133,3 +133,9 @@ python3 -m unittest discover -s tests -p 'schematic_check_test.py'
 从原理图引脚连接点、直线导线、明确连接点、网络标签/电源标记以及 NC 标记建立单页连接图，比较 PCB 的端子网络分组。格式依据 [EasyEDA Standard 官方文档](https://docs.easyeda.com/en/DocumentFormat/2-EasyEDA-Schematic-File-Format/)。无连接锚点的导线内部交叉不合并；总线、层级等未支持记录拒绝解析。位号差异仅在相同源元件 ID 时归一，不以网络名猜测元件身份。
 
 本次匹配 364/366 个原理图端子，6 个无网络焊盘全部有明确 NC 标记；匹配部分未发现网络分组差异。仍有 X1 两个端子身份未匹配、16 个 PCB 焊盘缺少元件引用、3 组标签共用连接待审查。**NC 证明原理图意图，不证明该意图符合器件电气要求；这不是整板 ERC 通过结论。** 详见 [核对报告](reports/SCHEMATIC-CHECK-2026-10-09.md)。网页检查面板显示摘要与选中焊盘的 NC 证据，本地 JSON 不随仓库发布。
+
+### 钻孔与槽孔复查
+
+`tools/gerber_check.py` 现在同时读取 `Gerber_Drill_PTH.DRL` 和 `Gerber_Drill_NPTH.DRL`，从两层铜图扣除圆孔与 G85 槽孔后再检查连通性。解析范围限定为当前 EasyEDA 输出的毫米、绝对坐标、明确 3.3 格式；其他命令或不完整文件直接报错。报告验证包含两份钻孔文件的哈希，钻孔改动也会使旧报告失效。
+
+3D 基板和焊盘使用真实孔轮廓；槽孔端点直接来自全局源坐标，不随封装旋转两次。修正独立孔和圆形丝印的半径/直径转换，铜层 cutout 不再画成实心铜面。圆弧仍为离散多边形；尚未模拟镀层厚度、制造公差或完整环宽/孔间距规则。详见 [钻孔复查记录](reports/DRILL-CHECK-2026-10-09.md)。

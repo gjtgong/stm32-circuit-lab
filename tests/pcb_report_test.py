@@ -7,7 +7,7 @@ class PcbReportTests(unittest.TestCase):
     def test_report_rejects_changed_source_and_unknown_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
-            inputs=['references/open-board/EasyEDA_F103ZET6.Pcb.api.json','references/open-board/gerber/Gerber_TopLayer.GTL','references/open-board/gerber/Gerber_BottomLayer.GBL']
+            inputs=['references/open-board/EasyEDA_F103ZET6.Pcb.api.json','references/open-board/gerber/Gerber_TopLayer.GTL','references/open-board/gerber/Gerber_BottomLayer.GBL','references/open-board/gerber/Gerber_Drill_PTH.DRL','references/open-board/gerber/Gerber_Drill_NPTH.DRL']
             hashes={}
             for name in inputs:
                 path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'original')
@@ -16,8 +16,10 @@ class PcbReportTests(unittest.TestCase):
             report.write_text(json.dumps({'inputHashes':hashes,'summary':{}}))
             with patch.object(server,'ROOT',root):
                 self.assertEqual(server.load_pcb_report()['inputHashes'],hashes)
-                (root/inputs[0]).write_bytes(b'changed')
-                with self.assertRaises(ValueError):server.load_pcb_report()
+                for name in inputs:
+                    (root/name).write_bytes(b'changed')
+                    with self.assertRaises(ValueError):server.load_pcb_report()
+                    (root/name).write_bytes(b'original')
                 hashes['../../other']='abc';report.write_text(json.dumps({'inputHashes':hashes}))
                 with self.assertRaises(ValueError):server.load_pcb_report()
 
