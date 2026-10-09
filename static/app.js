@@ -1,5 +1,5 @@
 'use strict';
-function installBreathePreset(){const select=document.getElementById('preset');if(!select||[...select.options].some(option=>option.value==='breathe'))return;const option=document.createElement('option');option.value='breathe';option.textContent='板载呼吸灯 · PB5 / PE5';select.insertBefore(option,select.options[2]||null)}
+function installBreathePreset(){const select=document.getElementById('preset');if(!select||[...select.options].some(option=>option.value==='breathe'))return;const option=document.createElement('option');option.value='breathe';option.disabled=Boolean(window.OpenBoardData);option.textContent=option.disabled?'旧版精英板呼吸灯（当前板不支持）':'板载呼吸灯 · PB5 / PE5';select.insertBefore(option,select.options[2]||null)}
 setTimeout(installBreathePreset,0);
 const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';
 const BOARD=window.EliteBoardMap;
