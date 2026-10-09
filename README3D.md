@@ -43,3 +43,7 @@ node --test tests/open-board-mapping.test.cjs
 
 The browser acceptance pass is owned by the lead agent. No browser profile or
 localStorage state is modified by this renderer work.
+
+## 2026-10-09 geometry fixes
+
+MCU leads now use source pad positions in world coordinates with bent gull-wing geometry. LED1 is a 0603 rectangular SMD body with metal terminations. Source drill diameters cut substrate holes; copper pad/drill visualization remains approximate. Power toggle state survives page reload within the same browser session. The incompatible legacy onboard-breathing preset is disabled for this selected board.

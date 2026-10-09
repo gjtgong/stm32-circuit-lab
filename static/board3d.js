@@ -42,6 +42,7 @@ const COLORS = Object.freeze({
 });
 
 let boardPowered = false;
+try { boardPowered = sessionStorage.getItem('stm32-board-power') === 'on'; } catch {}
 let cadPowerLed = null;
 let cadPowerGlow = null;
 let viewDistance = 1;
@@ -691,23 +692,31 @@ function cadComponentBounds(component, padById) {
 }
 
 function addCadLeg(pad, center, bodyWidth, bodyDepth, parent) {
-  const padPoint = cadPadPosition(pad).clone();
-  padPoint.y = 0.92;
-  const localPad = padPoint.sub(center);
-  const edge = localPad.clone();
-  const xLimit = bodyWidth / 2;
-  const zLimit = bodyDepth / 2;
-  if (Math.abs(localPad.x) > Math.abs(localPad.z)) edge.set(xLimit * Math.sign(localPad.x), 0.92, Math.max(-zLimit, Math.min(zLimit, localPad.z)));
-  else edge.set(Math.max(-xLimit, Math.min(xLimit, localPad.x)), 0.92, zLimit * Math.sign(localPad.z));
-  const direction = localPad.clone().sub(edge);
-  const length = direction.length();
-  if (length < 0.1) return;
-  const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18 * CAD_MM_TO_WORLD, 0.18, length), material(COLORS.contact, { metalness: 0.82, roughness: 0.28 }));
-  leg.position.copy(edge.clone().add(localPad).multiplyScalar(0.5));
-  leg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction.normalize());
-  leg.userData = { type: 'cad-mcu-leg', padId: pad.id, net: pad.net || null, label: `${pad.ref || 'U2'} pad ${pad.number || ''}` };
-  parent.add(leg);
-  return leg;
+  const foot = cadPadPosition(pad).clone();
+  foot.y = 0.98;
+  const delta = foot.clone().sub(center);
+  const horizontal = Math.abs(delta.x) > Math.abs(delta.z);
+  const outward = new THREE.Vector3(horizontal ? Math.sign(delta.x) : 0, 0, horizontal ? 0 : Math.sign(delta.z));
+  const shoulder = foot.clone();
+  if (horizontal) shoulder.x = center.x + outward.x * bodyWidth/2;
+  else shoulder.z = center.z + outward.z * bodyDepth/2;
+  shoulder.y = center.y + 0.05;
+  const heel = shoulder.clone().addScaledVector(outward, 0.48);
+  heel.y = shoulder.y;
+  const toe = foot.clone().addScaledVector(outward, -0.32);
+  const points = [shoulder, heel, toe, foot];
+  let first;
+  for (let i=1; i<points.length; i++) {
+    const direction = points[i].clone().sub(points[i-1]);
+    if (direction.length()<0.01) continue;
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.22*CAD_MM_TO_WORLD,0.13,direction.length()), material(COLORS.contact,{metalness:0.88,roughness:0.25}));
+    leg.position.copy(points[i].clone().add(points[i-1]).multiplyScalar(0.5));
+    leg.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),direction.normalize());
+    leg.userData = {type:'cad-mcu-leg',padId:pad.id,net:pad.net || null,label:`${pad.ref || 'U2'} pad ${pad.number || ''}`};
+    parent.add(leg);
+    first ||= leg;
+  }
+  return first;
 }
 
 function addCadComponent(component, padById) {
@@ -731,10 +740,20 @@ function addCadComponent(component, padById) {
   const mountingMarker = packageName.includes('M3') || /^TP[1-9]$/i.test(String(component.ref || ''));
   const body = mountingMarker ? null : mesh(new THREE.BoxGeometry(bounds.width, header ? 2.6 : passive ? 0.75 : packageName.includes('LQFP') ? 2.1 : 1.4, bounds.depth), material(color, { roughness: 0.52, metalness: 0.16 }), new THREE.Vector3(), group, { type: 'cad-component-body', componentId: component.id, ref: component.ref, label: group.userData.label, source: 'PE.JADO EasyEDA', approximate: true, dimensionsSource: bounds.dimensionsSource });
   if (packageName.includes('LED')) {
-    const domeMaterial = material(component.ref === 'LED1' ? COLORS.red : COLORS.green, { roughness: 0.2, transparent: true, opacity: 0.5, emissive: component.ref === 'LED1' ? COLORS.red : COLORS.green, emissiveIntensity: component.ref === 'LED1' ? 0.1 : 0 });
-    const dome = mesh(new THREE.SphereGeometry(Math.max(0.8, Math.min(bounds.width, bounds.depth) * 0.28), 16, 10), domeMaterial, new THREE.Vector3(0, 1.3, 0), group, { type: 'cad-led-dome', componentId: component.id, ref: component.ref, net: component.net || null, label: group.userData.label });
-    dome.scale.y = 0.72;
-    if (component.ref === 'LED1') { cadPowerLed = dome; dome.material.emissiveIntensity = 0; cadPowerGlow = new THREE.PointLight(0xff3030, 0, 6, 2); cadPowerGlow.position.set(0,1.8,0); group.add(cadPowerGlow); }
+    // LED0603 is a rectangular SMD package, not a through-hole dome.
+    const ledColor = component.ref === 'LED1' ? COLORS.red : COLORS.green;
+    const ledWidth=1.6*CAD_MM_TO_WORLD, ledDepth=0.8*CAD_MM_TO_WORLD;
+    body.geometry.dispose();
+    body.geometry = new THREE.BoxGeometry(ledWidth,0.65,ledDepth);
+    body.material = material(0xd8d4c3,{roughness:0.6});
+    for (const sign of [-1,1]) mesh(new THREE.BoxGeometry(ledWidth*0.18,0.67,ledDepth),material(COLORS.silver,{metalness:0.85,roughness:0.25}),new THREE.Vector3(sign*ledWidth*0.42,0,0),group,{type:'led-termination',ref:component.ref});
+    const lens = mesh(new THREE.BoxGeometry(ledWidth*0.60,0.22,ledDepth*0.80),material(ledColor,{roughness:0.25,emissive:ledColor,emissiveIntensity:0,transparent:true,opacity:0.4}),new THREE.Vector3(0,0.4,0),group,{type:'cad-led-lens',ref:component.ref,label:group.userData.label});
+    if (component.ref==='LED1') {
+      cadPowerLed = lens;
+      cadPowerGlow = new THREE.PointLight(0xff3030,0,6,2);
+      cadPowerGlow.position.set(0,1,0);
+      group.add(cadPowerGlow);
+    }
   }
   if (header) {
     group.position.y = 2.3;
@@ -803,6 +822,19 @@ function buildCadBoard() {
   shape.moveTo((outline[0][0] - CAD_WIDTH_MM / 2) * CAD_MM_TO_WORLD, -(outline[0][1] - CAD_HEIGHT_MM / 2) * CAD_MM_TO_WORLD);
   outline.slice(1).forEach(point => shape.lineTo((point[0] - CAD_WIDTH_MM / 2) * CAD_MM_TO_WORLD, -(point[1] - CAD_HEIGHT_MM / 2) * CAD_MM_TO_WORLD));
   shape.closePath();
+  // Source drill diameters cut real holes through the PCB substrate.
+  const drills = [...(CAD.pads || []), ...(CAD.vias || [])];
+  const seenDrills = new Set();
+  for (const drill of drills) {
+    const diameter = Number(drill.drill);
+    if (!(diameter > 0) || !Number.isFinite(drill.x) || !Number.isFinite(drill.y)) continue;
+    const key = `${drill.x}:${drill.y}:${diameter}`;
+    if (seenDrills.has(key)) continue;
+    seenDrills.add(key);
+    const hole = new THREE.Path();
+    hole.absarc((drill.x-CAD_WIDTH_MM/2)*CAD_MM_TO_WORLD, -(drill.y-CAD_HEIGHT_MM/2)*CAD_MM_TO_WORLD, diameter*CAD_MM_TO_WORLD/2, 0, Math.PI*2, true);
+    shape.holes.push(hole);
+  }
   const pcb = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 1.6, bevelEnabled: false }), material(0x126047, { roughness: 0.76, metalness: 0.05 }));
   pcb.rotation.x = Math.PI / 2;
   pcb.position.y = 0.8;
@@ -863,6 +895,7 @@ function updateCadNetHighlight() {
 
 function setBoardPower(on) {
   boardPowered = Boolean(on);
+  try { sessionStorage.setItem('stm32-board-power', boardPowered ? 'on' : 'off'); } catch {}
   if (cadPowerLed) { cadPowerLed.material.emissiveIntensity = boardPowered ? 3 : 0; cadPowerLed.material.opacity = boardPowered ? 1 : 0.4; }
   if (cadPowerGlow) cadPowerGlow.intensity = boardPowered ? 2 : 0;
   const button = document.getElementById('boardPower');
@@ -1059,7 +1092,6 @@ function addExternalResponseMesh(part, definition, group, width, depth) {
     const domeMaterial = material(ledColor, { roughness: 0.22, transparent: true, opacity: 0.38, emissive: ledColor, emissiveIntensity: 0 });
     const dome = mesh(new THREE.SphereGeometry(4.4, 20, 12), domeMaterial, new THREE.Vector3(width * 0.28, 4.7, 0), group, { type: 'external-led-dome', partId: part.id, label: `${definition.name} dome` });
     dome.scale.y = 0.72;
-    if (component.ref === 'LED1') { cadPowerLed = dome; dome.material.emissiveIntensity = 0; cadPowerGlow = new THREE.PointLight(0xff3030, 0, 6, 2); cadPowerGlow.position.set(0,1.8,0); group.add(cadPowerGlow); }
     const light = new THREE.PointLight(ledColor, 0, 22, 2);
     light.position.set(width * 0.28, 5.2, 0);
     group.add(light);
@@ -1564,7 +1596,7 @@ function init() {
     ground.receiveShadow = true;
     scene.add(ground);
     scene.add(new THREE.GridHelper(480, 48, 0x243746, 0x172631));
-    if (isCadBoard()) buildCadBoard();
+    if (isCadBoard()) { buildCadBoard(); setBoardPower(boardPowered); }
     else buildBoard();
     moduleGroup = new THREE.Group();
     moduleGroup.name = 'external-modules';
