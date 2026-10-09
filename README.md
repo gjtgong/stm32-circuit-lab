@@ -107,3 +107,15 @@ python3 -m unittest discover -s tests -p 'pcb_check_test.py'
 检查铜轨、RECT/ELLIPSE/OVAL 焊盘、过孔以及可解析的直线实体铜区域。输出异网同层相交、指定间距不足、同网焊盘不连通的候选；金属化通孔跨层连通，异层交叉本身不会报短路。CLI 报告在本地 `reports/pcb-check.json`，不随仓库发布。尚未接入网页问题标记界面。
 
 **这是部分几何审计，不是全板通过/失败判定。** 覆铜边界不等于实际填铜，当前未解析覆铜、铜层文字和区域 cutout；实际板 GND 断连候选可能由缺失地平面数据造成。圆弧使用多边形近似；0.15mm 是本次测试阈值，不代表来源板的制造规则。没有检查原理图与 PCB 网络一致性、电压、电流或元件电气模型。
+
+
+### 实际 Gerber 覆铜连通性复查
+
+```bash
+python3 tools/gerber_check.py
+python3 -m unittest discover -s tests -p 'gerber_check_test.py'
+```
+
+此工具按绘制顺序处理 dark/clear 极性、区域多轮廓、圆形/矩形孔径的线段和闪绘，使用焊盘/过孔标注匹配实际铜岛网络。只支持绝对毫米坐标和直线，遇到未支持命令会拒绝解析。格式依据 [Ucamco Gerber 规范](https://www.ucamco.com/en/guest/downloads/gerber-format)。
+
+本次源板复查消除了源几何模式中的 GND 断连候选；已匹配网络未发现冲突或断连，但还有 96 个未匹配网络的铜块，需要人工审查。**不代表整板通过电气或制造验证。** 无网络名的 Gerber 依赖源 PCB 标注推断网络，尚未检查间距、电流或元件电气行为。详见 [复查报告](reports/GERBER-CHECK-2026-10-09.md)。本地详细 JSON 不随仓库发布，网页标记尚未接入。

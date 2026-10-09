@@ -22,11 +22,7 @@ class Copper:
     bridge: bool = False
 
 
-def audit(board: dict, clearance_mm: float = 0.15, tolerance_mm: float = 1e-6) -> dict:
-    if not math.isfinite(clearance_mm) or clearance_mm < 0:
-        raise ValueError('clearance must be a finite nonnegative value')
-    if not math.isfinite(tolerance_mm) or tolerance_mm < 0:
-        raise ValueError('tolerance must be a finite nonnegative value')
+def source_copper(board):
     copper, skipped = [], []
     def add(obj, kind, geom, layers, terminal=False, bridge=False):
         if geom.is_empty or not geom.is_valid:
@@ -84,6 +80,15 @@ def audit(board: dict, clearance_mm: float = 0.15, tolerance_mm: float = 1e-6) -
             continue
         # No repair buffer(0): invalid polygon repair can invent copper.
         add(graphic,kind,Polygon(points),[graphic['layer']])
+    return copper, skipped
+
+
+def audit(board: dict, clearance_mm: float = 0.15, tolerance_mm: float = 1e-6) -> dict:
+    if not math.isfinite(clearance_mm) or clearance_mm < 0:
+        raise ValueError('clearance must be a finite nonnegative value')
+    if not math.isfinite(tolerance_mm) or tolerance_mm < 0:
+        raise ValueError('tolerance must be a finite nonnegative value')
+    copper, skipped = source_copper(board)
     parent = list(range(len(copper)))
     def find(i):
         while parent[i] != i: parent[i] = parent[parent[i]]; i = parent[i]

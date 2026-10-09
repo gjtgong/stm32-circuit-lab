@@ -22,3 +22,7 @@
 Local workspace: 16 Python tests and 18 Node tests passed. CAD checks use locally acquired board data. Public checkout needs `python3 tools/fetch_open_board.py` before CAD tests, and external ARM GCC/Renode before firmware execution tests. Power LED visual state was checked in browser, including off/on; it is an ideal supply visualization, not a SPICE result.
 
 Optimization: JS module syntax check, 6 converter tests and 3 CAD mapping tests passed. Browser verified complete board/modules/wires, package mark, MCU leads and off/on power LED; no new console errors after external-LED reference fix. Existing source photos/manuals and third-party board geometry remain local only.
+
+## Gerber connectivity follow-up
+
+16 Gerber tests and 12 source-geometry tests passed. Ordered copper images resolve the prior GND candidate; 0 seeded net conflicts, 0 disconnected known nets, 0 missing/partial seeds. 96 unassigned copper clusters remain for review. See reports/GERBER-CHECK-2026-10-09.md; this is not a full electrical or manufacturing verdict.
