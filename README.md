@@ -95,3 +95,15 @@ node --test tests/*.test.cjs
 ## 开源与来源
 
 应用代码以 GPL-3.0-only 发布。第三方 PCB 原文件和派生几何因再分发条款待确认，未随仓库发布；启动前运行获取工具从原来源下载并转换，仅在本地生成。见 [板卡来源](references/OPEN-BOARD-SOURCE.md)。Three.js / OrbitControls / SVGLoader 使用 MIT，许可证见 `static/vendor/THREE-LICENSE`；ST Logo 矢量来自 Simple Icons（CC0），商标权仍属于 ST。厂商 PDF 只引用链接，不随仓库发布。完整说明见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+
+## 实验性 PCB 几何检查
+
+```bash
+python3 -m pip install -r requirements-check.txt
+python3 tools/pcb_check.py --clearance 0.15
+python3 -m unittest discover -s tests -p 'pcb_check_test.py'
+```
+
+检查铜轨、RECT/ELLIPSE/OVAL 焊盘、过孔以及可解析的直线实体铜区域。输出异网同层相交、指定间距不足、同网焊盘不连通的候选；金属化通孔跨层连通，异层交叉本身不会报短路。CLI 报告在本地 `reports/pcb-check.json`，不随仓库发布。尚未接入网页问题标记界面。
+
+**这是部分几何审计，不是全板通过/失败判定。** 覆铜边界不等于实际填铜，当前未解析覆铜、铜层文字和区域 cutout；实际板 GND 断连候选可能由缺失地平面数据造成。圆弧使用多边形近似；0.15mm 是本次测试阈值，不代表来源板的制造规则。没有检查原理图与 PCB 网络一致性、电压、电流或元件电气模型。
