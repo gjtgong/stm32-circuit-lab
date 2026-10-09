@@ -20,3 +20,18 @@ class PcbReportTests(unittest.TestCase):
                 with self.assertRaises(ValueError):server.load_pcb_report()
                 hashes['../../other']='abc';report.write_text(json.dumps({'inputHashes':hashes}))
                 with self.assertRaises(ValueError):server.load_pcb_report()
+
+    def test_schematic_report_rejects_changed_schematic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            inputs=['references/open-board/EasyEDA_F103ZET6.Pcb.api.json','references/open-board/EasyEDA_project-with-schematic.api.json']
+            hashes={}
+            for name in inputs:
+                path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'original')
+                hashes[name]=hashlib.sha256(path.read_bytes()).hexdigest()
+            report=root/'reports/schematic-check.json';report.parent.mkdir()
+            report.write_text(json.dumps({'inputHashes':hashes}))
+            with patch.object(server,'ROOT',root):
+                self.assertEqual(server.load_schematic_report()['inputHashes'],hashes)
+                (root/inputs[1]).write_bytes(b'changed')
+                with self.assertRaises(ValueError):server.load_schematic_report()

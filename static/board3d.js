@@ -1594,7 +1594,7 @@ function createPcbAuditPanel() {
   if (!isCadBoard()) return;
   const panel = document.createElement('details');
   panel.className = 'pcb-audit-panel';
-  panel.innerHTML = '<summary>PCB 铜层检查</summary><div class="pcb-audit-body"><p class="pcb-audit-status">正在读取本地报告…</p><label>定位未匹配铜块<select aria-label="定位未匹配铜块" disabled><option value="">请选择铜块</option></select></label><p class="pcb-audit-selection">选中后临时隐藏元件，显示真实铜轮廓。</p><p class="pcb-audit-evidence"></p><div class="pcb-audit-actions"><button type="button" class="pcb-audit-clear">清除高亮</button><button type="button" class="pcb-audit-reload">刷新检查</button></div><p>未匹配网络 ≠ 已确认短路。当前仅做铜几何连通性检查，不代表整板可用。</p></div>';
+  panel.innerHTML = '<summary>PCB 铜层检查</summary><div class="pcb-audit-body"><p class="pcb-audit-status">正在读取本地报告…</p><p class="pcb-audit-netlist"></p><label>定位未匹配铜块<select aria-label="定位未匹配铜块" disabled><option value="">请选择铜块</option></select></label><p class="pcb-audit-selection">选中后临时隐藏元件，显示真实铜轮廓。</p><p class="pcb-audit-evidence"></p><div class="pcb-audit-actions"><button type="button" class="pcb-audit-clear">清除高亮</button><button type="button" class="pcb-audit-reload">刷新检查</button></div><p>未匹配网络 ≠ 已确认短路。当前仅做铜几何连通性检查，不代表整板可用。</p></div>';
   root.append(panel);
   const select = panel.querySelector('select');
   const status = panel.querySelector('.pcb-audit-status');
@@ -1602,6 +1602,8 @@ function createPcbAuditPanel() {
   const evidence = panel.querySelector('.pcb-audit-evidence');
   const categories = {'unnamed-pad':'无网焊盘','copper-text':'铜层文字',mixed:'混合来源',unresolved:'来源待核查'};
   let clusters = [];
+  let schematicByPad = new Map();
+  const netlistStatus = panel.querySelector('.pcb-audit-netlist');
   const clear = () => { clearPcbAuditHighlight();select.value='';evidence.textContent='';detail.textContent='选中后临时隐藏元件，显示真实铜轮廓。'; };
   select.addEventListener('change', () => {
     const cluster = clusters.find(item => item.id === select.value);
@@ -1612,12 +1614,18 @@ function createPcbAuditPanel() {
       const sources = provenance.evidence.map(item => item.kind === 'unnamed-pad'
         ? `${item.ref || '焊盘'}-${item.number} (${item.id})${item.plannedDrillMm > 0 ? `，计划孔径 ${item.plannedDrillMm.toFixed(3)} mm` : ''}`
         : `铜层文字“${item.text.replaceAll('\\n',' / ')}” (${item.id})`);
-      evidence.textContent = `来源：${categories[provenance.category] || '待核查'} · 覆盖 ${(provenance.coveredFraction*100).toFixed(1)}% · ${sources.join('；') || '无几何匹配'}。仅作来源关联，仍需核查网络和电气设计。`;
+      evidence.textContent = `来源：${categories[provenance.category] || '待核查'} · 覆盖 ${(provenance.coveredFraction*100).toFixed(1)}% · ${sources.join('；') || '无几何匹配'}。`;
+      const matched = provenance.evidence.map(item => schematicByPad.get(item.id)).filter(Boolean);
+      if (matched.length) {
+        const statuses = {'explicit-no-connect':'明确 NC（原设计意图，未验证器件要求）',mapped:'已匹配原理图网络','missing-pcb-net':'原理图引脚缺少 PCB 网络',mismatch:'原理图与 PCB 不一致'};
+        evidence.textContent += ' 原理图：' + [...new Set(matched.map(item => `${item.terminal} · ${statuses[item.state] || '待核查'}`))].join('；') + '。';
+      }
     } else evidence.textContent = '报告尚无来源证据，请重新生成检查报告。';
     detail.textContent = `${cluster.id} · ${cluster.geometry[0].layer === 2 ? '底层' : '顶层'} · ${cluster.areaMm2.toFixed(6)} mm² · 粉色铜轮廓，尚待核查`;
   });
   const load = async () => {
     clear();select.disabled=true;status.textContent='正在读取本地报告…';
+    schematicByPad = new Map();netlistStatus.textContent='正在读取原理图核对…';
     select.replaceChildren(new Option('请选择铜块',''));
     try {
       const response = await fetch('/api/pcb-check', {cache:'no-store'});
@@ -1629,7 +1637,17 @@ function createPcbAuditPanel() {
       status.textContent = `网络冲突 ${report.summary.netConflictClusters} · 断连候选 ${report.summary.unconnectedNets} · 未匹配网络 ${clusters.length}`;
       for (const cluster of clusters) select.add(new Option(`${cluster.id} · ${cluster.geometry[0].layer === 2 ? '底层' : '顶层'} · ${cluster.areaMm2.toFixed(3)} mm² · ${categories[cluster.provenance?.category] || '来源待核查'}`,cluster.id));
       select.disabled=false;
-    } catch(error) { status.textContent=error.message; }
+      try {
+        const response = await fetch('/api/schematic-check',{cache:'no-store'});
+        const schematic = await response.json();
+        if (!response.ok) throw new Error(schematic.hint || schematic.error || '原理图报告不可用');
+        if (CAD.meta?.sourceSha256 && schematic.inputHashes?.[CAD.meta.sourceDocument] !== CAD.meta.sourceSha256) throw new Error('原理图报告与当前板源数据不符');
+        for (const item of schematic.terminalStatus) for (const id of item.padIds) schematicByPad.set(id,item);
+        const summary = schematic.summary;
+        netlistStatus.textContent = `原理图：匹配 ${summary.matchedTerminals}/${summary.schematicPins} 引脚 · NC ${summary.explicitNoConnectMatched} · 网络差异 ${summary.networkIssues} · 标记异常 ${summary.schematicIssues}。仍待核查：${schematic.missingPcbTerminals.join('、') || '无未匹配位号'}；${summary.unmappedPcbPads} 个焊盘缺元件引用；${summary.labelAliasGroups} 组标签共用连接。`;
+        if (select.value) select.dispatchEvent(new Event('change'));
+      } catch(error) { netlistStatus.textContent=error.message; }
+    } catch(error) { status.textContent=error.message;netlistStatus.textContent='原理图核对未加载'; }
   };
   panel.querySelector('.pcb-audit-clear').addEventListener('click',clear);
   panel.querySelector('.pcb-audit-reload').addEventListener('click',load);

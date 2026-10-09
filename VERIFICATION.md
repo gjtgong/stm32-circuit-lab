@@ -38,3 +38,9 @@ Final follow-up regression: all 46 Python tests and 18 Node tests passed. Module
 7 provenance tests and 18 Gerber tests passed. All 96 unassigned network clusters remain listed:88 source copper-text associations,8 artwork associations covering6 unnamed pads. Source drill records confirm SW1 planned1mm holes; no physical drilling simulation added. Matching is same-layer path/footprint geometry, not a text bounding box. Extra copper and unsupported formats remain unresolved; associations never remove conflict/open findings. UI adds source IDs, coverage, pad identity/text and planned drill; source PCB hash also checked against loaded CAD metadata.
 
 Follow-up focused regression:7 provenance +18 Gerber +12 source geometry +1 report tests passed (38 total). JS module syntax and diff checks passed. Browser verified SW1-1 drill annotation, U2-106 pad identity, and copper text784520A;0console errors. Closed copper-font contours now render as filled source glyphs, and the inspector is taller for readable evidence.
+
+## Schematic/PCB terminal comparison
+
+17 schematic tests +2 report freshness tests passed. Local source graph:366 pins,504 wiresegments,286 labels,6NC markers;364 matched PCB terminals,0 network differences in matched subset.6unnamedpads have explicit NC intent. BOOT1/BOOT mapped only by same source component ID;X1:1/2 and16unreferencedpads remain unverified;3alias groups retained for review. In-memory real PCB pin-net change and real NC marker deletion detected. No device-datasheet/electrical/ERC verdict. API serves source-hash-verified report; browser selected U2-106 and showed NC intent and unresolved summary.
+
+Final regression:72 Python +18 Node tests passed; JS syntax/diff checks passed. Browser U2-106/SW1 NC evidence and clearing/reselecting verified,0console errors; existing code and6wires preserved.

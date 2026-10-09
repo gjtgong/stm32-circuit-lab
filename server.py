@@ -39,19 +39,29 @@ RUNTIME = ROOT / "runtime"
 EXAMPLES = ROOT / "examples"
 STATIC = ROOT / "static"
 
-def load_pcb_report() -> dict:
-    """Serve only a locally generated report still matching its source inputs."""
-    report = json.loads((ROOT / 'reports/gerber-check.json').read_text())
+def load_verified_report(filename: str, required: set[str]) -> dict:
+    """Verify fixed source paths before serving a locally generated report."""
+    report = json.loads((ROOT / 'reports' / filename).read_text())
     hashes = report.get('inputHashes', {})
-    required = {'references/open-board/EasyEDA_F103ZET6.Pcb.api.json',
-                'references/open-board/gerber/Gerber_TopLayer.GTL',
-                'references/open-board/gerber/Gerber_BottomLayer.GBL'}
     if set(hashes) != required:
-        raise ValueError('报告缺少来源校验，请重新运行 python3 tools/gerber_check.py')
+        raise ValueError('报告缺少来源校验，请重新生成检查报告')
     for relative, expected in hashes.items():
         if hashlib.sha256((ROOT / relative).read_bytes()).hexdigest() != expected:
-            raise ValueError('PCB 来源已变化，请重新生成检查报告')
+            raise ValueError('来源已变化，请重新生成检查报告')
     return report
+
+
+def load_pcb_report() -> dict:
+    return load_verified_report('gerber-check.json', {
+        'references/open-board/EasyEDA_F103ZET6.Pcb.api.json',
+        'references/open-board/gerber/Gerber_TopLayer.GTL',
+        'references/open-board/gerber/Gerber_BottomLayer.GBL'})
+
+
+def load_schematic_report() -> dict:
+    return load_verified_report('schematic-check.json', {
+        'references/open-board/EasyEDA_F103ZET6.Pcb.api.json',
+        'references/open-board/EasyEDA_project-with-schematic.api.json'})
 
 
 HOST = os.environ.get("STM32_LAB_HOST", "127.0.0.1")
@@ -835,6 +845,12 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/status":
             self._send_json(_status())
+            return
+        if parsed.path == "/api/schematic-check":
+            try:
+                self._send_json(load_schematic_report())
+            except (OSError, ValueError) as exc:
+                self._send_json({"error": str(exc), "hint": "运行 python3 tools/schematic_check.py 后刷新检查"}, 409)
             return
         if parsed.path == "/api/pcb-check":
             try:
