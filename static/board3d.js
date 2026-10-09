@@ -1527,6 +1527,106 @@ function onPointerUp(event) {
   if (hit?.object.userData?.partId) dispatch('board3d:select', { id: hit.object.userData.partId });
 }
 
+let pcbAuditOverlay = null;
+let pcbAuditRestore = null;
+
+function clearPcbAuditHighlight() {
+  if (pcbAuditOverlay) {
+    pcbAuditOverlay.traverse(object => {
+      object.geometry?.dispose();
+      object.material?.dispose();
+    });
+    boardRoot.remove(pcbAuditOverlay);
+    pcbAuditOverlay = null;
+  }
+  if (pcbAuditRestore) {
+    setComponentsVisible(pcbAuditRestore.components);
+    setCopperLayer(pcbAuditRestore.layer);
+    camera.position.copy(pcbAuditRestore.position);
+    controls.target.copy(pcbAuditRestore.target);
+    controls.update();
+    const label = document.getElementById('zoomLevel');
+    if (label) label.textContent = `${Math.round(100*viewDistance/camera.position.distanceTo(controls.target))}%`;
+    pcbAuditRestore = null;
+  }
+}
+
+function highlightPcbCluster(cluster) {
+  clearPcbAuditHighlight();
+  if (!cluster || !boardRoot) return;
+  pcbAuditRestore = {components:cadComponentsVisible, layer:copperLayer,
+    position:camera.position.clone(), target:controls.target.clone()};
+  setComponentsVisible(false);
+  const layer = cluster.geometry[0].layer;
+  setCopperLayer(layer === 2 ? 'bottom' : 'top');
+  pcbAuditOverlay = new THREE.Group();
+  boardRoot.add(pcbAuditOverlay);
+  const bounds = new THREE.Box3();
+  for (const polygon of cluster.geometry) {
+    const points = polygon.exterior.map(([x,y]) => new THREE.Vector2(
+      (x-CAD_WIDTH_MM/2)*CAD_MM_TO_WORLD,(y-CAD_HEIGHT_MM/2)*CAD_MM_TO_WORLD));
+    const shape = new THREE.Shape(points);
+    for (const ring of polygon.holes) shape.holes.push(new THREE.Path(ring.map(([x,y]) => new THREE.Vector2(
+      (x-CAD_WIDTH_MM/2)*CAD_MM_TO_WORLD,(y-CAD_HEIGHT_MM/2)*CAD_MM_TO_WORLD))));
+    const surface = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({
+      color:0xff5cd1,side:THREE.DoubleSide,transparent:true,opacity:0.85,depthTest:false,depthWrite:false}));
+    surface.rotation.x = -Math.PI/2;
+    surface.position.y = polygon.layer === 2 ? -1.25 : 1.25;
+    surface.renderOrder = 100;
+    surface.raycast = () => {};
+    pcbAuditOverlay.add(surface);
+    for (const [x,y] of polygon.exterior) bounds.expandByPoint(cadToWorld(x,y,0));
+  }
+  const center = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  const fov = THREE.MathUtils.degToRad(camera.fov);
+  const extent = Math.max(size.x/Math.max(.2,camera.aspect),size.z,12);
+  const distance = Math.max(controls.minDistance, extent/Math.tan(fov/2));
+  controls.target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(0,layer === 2 ? -distance : distance,.001));
+  controls.update();
+  const label = document.getElementById('zoomLevel');
+  if (label) label.textContent = `${Math.round(100*viewDistance/distance)}%`;
+  showHint('粉色为实际 Gerber 铜轮廓 · 临时隐藏元件 · 尚未判定故障');
+}
+
+function createPcbAuditPanel() {
+  if (!isCadBoard()) return;
+  const panel = document.createElement('details');
+  panel.className = 'pcb-audit-panel';
+  panel.innerHTML = '<summary>PCB 铜层检查</summary><div class="pcb-audit-body"><p class="pcb-audit-status">正在读取本地报告…</p><label>定位未匹配铜块<select aria-label="定位未匹配铜块" disabled><option value="">请选择铜块</option></select></label><p class="pcb-audit-selection">选中后临时隐藏元件，显示真实铜轮廓。</p><div class="pcb-audit-actions"><button type="button" class="pcb-audit-clear">清除高亮</button><button type="button" class="pcb-audit-reload">刷新检查</button></div><p>未匹配网络 ≠ 已确认短路。当前仅做铜几何连通性检查，不代表整板可用。</p></div>';
+  root.append(panel);
+  const select = panel.querySelector('select');
+  const status = panel.querySelector('.pcb-audit-status');
+  const detail = panel.querySelector('.pcb-audit-selection');
+  let clusters = [];
+  const clear = () => { clearPcbAuditHighlight();select.value='';detail.textContent='选中后临时隐藏元件，显示真实铜轮廓。'; };
+  select.addEventListener('change', () => {
+    const cluster = clusters.find(item => item.id === select.value);
+    if (!cluster) { clear();return; }
+    highlightPcbCluster(cluster);
+    detail.textContent = `${cluster.id} · ${cluster.geometry[0].layer === 2 ? '底层' : '顶层'} · ${cluster.areaMm2.toFixed(6)} mm² · 粉色铜轮廓，尚待核查`;
+  });
+  const load = async () => {
+    clear();select.disabled=true;status.textContent='正在读取本地报告…';
+    select.replaceChildren(new Option('请选择铜块',''));
+    try {
+      const response = await fetch('/api/pcb-check', {cache:'no-store'});
+      const report = await response.json();
+      if (!response.ok) throw new Error(report.hint || report.error || '无法读取检查报告');
+      if (Math.abs(report.boardSizeMm.width-CAD_WIDTH_MM)>.001 || Math.abs(report.boardSizeMm.height-CAD_HEIGHT_MM)>.001) throw new Error('报告板尺寸与当前板不符，请重新生成');
+      clusters = [...report.unassignedClusters].sort((a,b)=>b.areaMm2-a.areaMm2);
+      status.textContent = `网络冲突 ${report.summary.netConflictClusters} · 断连候选 ${report.summary.unconnectedNets} · 未匹配 ${clusters.length}`;
+      for (const cluster of clusters) select.add(new Option(`${cluster.id} · ${cluster.geometry[0].layer === 2 ? '底层' : '顶层'} · ${cluster.areaMm2.toFixed(3)} mm²`,cluster.id));
+      select.disabled=false;
+    } catch(error) { status.textContent=error.message; }
+  };
+  panel.querySelector('.pcb-audit-clear').addEventListener('click',clear);
+  panel.querySelector('.pcb-audit-reload').addEventListener('click',load);
+  panel.addEventListener('toggle',()=>{ if (!panel.open) clear(); });
+  load();
+}
+
 function bindControls() {
   const canvas = renderer.domElement;
   canvas.addEventListener('pointerdown', onPointerDown);
@@ -1590,6 +1690,9 @@ function init() {
     const fill = new THREE.DirectionalLight(0x6aa4d9, 1.3);
     fill.position.set(-120, 70, -160);
     scene.add(fill);
+    const underside = new THREE.DirectionalLight(0xd6e7fa, 1.8);
+    underside.position.set(20, -120, 40);
+    scene.add(underside);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshStandardMaterial({ color: 0x0a1017, roughness: 0.91, metalness: 0.04 }));
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -4;
@@ -1616,6 +1719,7 @@ function init() {
     ledreadout.textContent = '板载 LED 等待真实 GPIO 轨迹';
     root.append(ledreadout);
     bindControls();
+    createPcbAuditPanel();
     resize();
     sceneReady = true;
     diagnostics.status = 'ready';

@@ -26,3 +26,9 @@ Optimization: JS module syntax check, 6 converter tests and 3 CAD mapping tests 
 ## Gerber connectivity follow-up
 
 16 Gerber tests and 12 source-geometry tests passed. Ordered copper images resolve the prior GND candidate; 0 seeded net conflicts, 0 disconnected known nets, 0 missing/partial seeds. 96 unassigned copper clusters remain for review. See reports/GERBER-CHECK-2026-10-09.md; this is not a full electrical or manufacturing verdict.
+
+## Copper issue viewer follow-up
+
+Gerber reports now export unassigned island polygon rings with layer and stable report IDs; a hole-preservation test verifies exported area. A loopback GET /api/pcb-check serves the report only if all three source hashes still match. A report test verifies changed-source and unexpected-path rejection. Browser verified 96 sorted entries, top/bottom selection, polygon highlighting, and clearing restores components/camera without editing firmware or six saved wires. Underside fill lighting improves inspection. No automatic fault verdict or current simulation is added.
+
+Final follow-up regression: all 46 Python tests and 18 Node tests passed. Module syntax and git diff whitespace checks passed.

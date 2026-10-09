@@ -54,7 +54,12 @@ def audit_gerber(board, layers):
             # Do not give a net-conflicted cluster a guessed single-net label.
             continue
         if not nets:
-            unassigned.append({'islands':indices,'areaMm2':round(sum(islands[i]['geometry'].area for i in indices),6)})
+            unassigned.append({'id':f'copper-{indices[0]}','islands':indices,
+                'areaMm2':round(sum(islands[i]['geometry'].area for i in indices),6),
+                'geometry':[{'layer':islands[i]['layer'],
+                    'exterior':[[round(x,6),round(y,6)] for x,y in islands[i]['geometry'].exterior.coords],
+                    'holes':[[[round(x,6),round(y,6)] for x,y in ring.coords] for ring in islands[i]['geometry'].interiors]}
+                    for i in indices]})
             continue
         net=next(iter(nets))
         if pads[net]:netgroups[net].append(sorted(pads[net]))
@@ -80,6 +85,12 @@ def main():
         coverage[filename] = dict(counts, copperAreaMm2=round(images[layer].area, 6))
     result = audit_gerber(board, images)
     result['gerberCoverage'] = coverage
+    import hashlib
+    import os
+    base = Path(__file__).resolve().parents[1]
+    inputs = [args.source, args.gerber_dir / 'Gerber_TopLayer.GTL', args.gerber_dir / 'Gerber_BottomLayer.GBL']
+    result['inputHashes'] = {os.path.relpath(path.resolve(), base):hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs}
+    result['boardSizeMm'] = {'width':board['meta']['widthMm'], 'height':board['meta']['heightMm']}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps(result['summary'], ensure_ascii=False))

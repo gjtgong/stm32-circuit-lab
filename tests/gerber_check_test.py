@@ -50,6 +50,14 @@ class GerberConnectivityTests(unittest.TestCase):
   b={'pads':[pad('p1','A',0,0),pad('p2','A',2,0,2)],'vias':[dict(id='v',net='A',x=1,y=0,diameter=.6,drill=.2)]}
   r=audit_gerber(b,{1:box(-.5,-.5,1.5,.5),2:box(.5,-.5,2.5,.5)})
   self.assertEqual(r['summary']['unconnectedNets'],0)
+ def test_unassigned_export_preserves_hole_and_layer(self):
+  from shapely.geometry import Polygon
+  g=Polygon([(0,0),(3,0),(3,3),(0,3)],holes=[[(1,1),(2,1),(2,2),(1,2)]])
+  r=audit_gerber({'pads':[]},{2:g})
+  cluster=r['unassignedClusters'][0]; exported=cluster['geometry'][0]
+  self.assertEqual(exported['layer'],2)
+  self.assertAlmostEqual(Polygon(exported['exterior'],exported['holes']).area,cluster['areaMm2'])
+  self.assertEqual(len(exported['holes']),1)
  def test_missing_seed_is_reported(self):
   r=audit_gerber({'pads':[pad('p','A',10,10)]},{1:box(0,0,1,1)})
   self.assertEqual(r['summary']['missingSeeds'],1);self.assertEqual(r['summary']['unassignedClusters'],1)
