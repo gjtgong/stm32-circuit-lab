@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "code": "#include \"stm32f103.h\"\n\n// PB0 bit-bang PWM: 1 ms then 2 ms pulses.\n// SG90 model displays commanded angle, without load dynamics.\nint main(void) {\n  board_gpio_output(GPIOB, 0);\n  for (;;) {\n    for (int n = 0; n < 25; n++) {\n      board_gpio_write(GPIOB, 0, 1);\n      board_delay_ms(1);\n      board_gpio_write(GPIOB, 0, 0);\n      board_delay_ms(19);\n    }\n    for (int n = 0; n < 25; n++) {\n      board_gpio_write(GPIOB, 0, 1);\n      board_delay_ms(2);\n      board_gpio_write(GPIOB, 0, 0);\n      board_delay_ms(18);\n    }\n  }\n}\n",
+  "parts": [
+    {
+      "id": "servo1",
+      "type": "servo",
+      "x": 735,
+      "y": 230
+    }
+  ],
+  "wires": [
+    {
+      "a": "board:PB0",
+      "b": "servo1:PWM",
+      "color": "#50c9ef"
+    },
+    {
+      "a": "board:5V",
+      "b": "servo1:V+",
+      "color": "#ed7474"
+    },
+    {
+      "a": "board:GND",
+      "b": "servo1:GND",
+      "color": "#8093a7"
+    }
+  ]
+}

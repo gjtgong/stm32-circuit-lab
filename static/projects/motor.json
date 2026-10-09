@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "code": "#include \"stm32f103.h\"\n\n// TB6612 A channel with real GPIO direction control.\n// The motor speed and encoder count are ideal estimates.\nint main(void) {\n  for (int pin = 0; pin < 4; pin++) board_gpio_output(GPIOB, pin);\n  board_gpio_write(GPIOB, 0, 1); // STBY enabled\n  board_gpio_write(GPIOB, 3, 1); // PWMA 100% duty\n  for (;;) {\n    board_gpio_write(GPIOB, 1, 1);\n    board_gpio_write(GPIOB, 2, 0);\n    board_delay_ms(500);\n    board_gpio_write(GPIOB, 1, 0);\n    board_gpio_write(GPIOB, 2, 1);\n    board_delay_ms(500);\n  }\n}\n",
+  "parts": [
+    {
+      "id": "driver1",
+      "type": "driver",
+      "x": 650,
+      "y": 110
+    },
+    {
+      "id": "motor1",
+      "type": "motor",
+      "x": 840,
+      "y": 420,
+      "maxRpm": 3000,
+      "ppr": 20
+    }
+  ],
+  "wires": [
+    {
+      "a": "board:PB0",
+      "b": "driver1:STBY",
+      "color": "#50c9ef"
+    },
+    {
+      "a": "board:PB1",
+      "b": "driver1:AIN1",
+      "color": "#50c9ef"
+    },
+    {
+      "a": "board:PB2",
+      "b": "driver1:AIN2",
+      "color": "#50c9ef"
+    },
+    {
+      "a": "board:PB3",
+      "b": "driver1:PWMA",
+      "color": "#50c9ef"
+    },
+    {
+      "a": "board:5V",
+      "b": "driver1:VM",
+      "color": "#ed7474"
+    },
+    {
+      "a": "board:3V3",
+      "b": "driver1:VCC",
+      "color": "#ed7474"
+    },
+    {
+      "a": "board:GND",
+      "b": "driver1:GND",
+      "color": "#93ae86"
+    },
+    {
+      "a": "driver1:A01",
+      "b": "motor1:M+",
+      "color": "#93ae86"
+    },
+    {
+      "a": "driver1:A02",
+      "b": "motor1:M-",
+      "color": "#93ae86"
+    },
+    {
+      "a": "board:3V3",
+      "b": "motor1:VCC",
+      "color": "#ed7474"
+    },
+    {
+      "a": "board:GND",
+      "b": "motor1:GND",
+      "color": "#93ae86"
+    }
+  ]
+}

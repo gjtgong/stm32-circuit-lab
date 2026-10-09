@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+runtime/renode/
+*.elf
+*.o
+*.map
+
+# Vendor references and development-only screenshots
+references/*.pdf
+references/*.png
+references/st-marking/*.pdf
+static/assets/elite-v1-board.png
+*-preview.png
+*preview.jpg
+.env
+.env.*
+*.log
+
+# Board redistribution terms remain unresolved; obtain locally from source.
+references/open-board/*
+!references/open-board/LICENSE-GPL-3.0-only.txt
+!references/open-board/SHA256SUMS
+static/open-board-data.js
