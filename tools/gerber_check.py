@@ -79,6 +79,11 @@ def main():
     parser.add_argument('--source', type=Path, default=converter.DEFAULT_SOURCE)
     parser.add_argument('--gerber-dir', type=Path, default=converter.DEFAULT_GERBER.parent)
     parser.add_argument('--output', type=Path, default=Path('reports/gerber-check.json'))
+    parser.add_argument('--copper-clearance', type=float, default=.15)
+    parser.add_argument('--annular-ring', type=float, default=.10)
+    parser.add_argument('--npth-clearance', type=float, default=.15)
+    parser.add_argument('--hole-clearance', type=float, default=.25)
+    parser.add_argument('--quantization-tolerance', type=float, default=.002)
     args = parser.parse_args()
     board = converter.parse_board(args.source, args.gerber_dir / converter.DEFAULT_GERBER.name)
     images, coverage = {}, {}
@@ -90,14 +95,23 @@ def main():
     drill_files = ['Gerber_Drill_PTH.DRL', 'Gerber_Drill_NPTH.DRL']
     for filename in drill_files:
         hits = parse_drills((args.gerber_dir / filename).read_text())
+        for index,hit in enumerate(hits):
+            hit.update(plated=filename == 'Gerber_Drill_PTH.DRL',sourceFile=filename,sourceHit=index)
         drills.extend(hits)
         coverage[filename] = {'hits':len(hits), 'slots':sum(h['slot'] for h in hits)}
+    artwork = images
     images = remove_drills(images, drills)
     for layer, filename in ((1, 'Gerber_TopLayer.GTL'), (2, 'Gerber_BottomLayer.GBL')):
         coverage[filename]['afterDrillingAreaMm2'] = round(images[layer].area, 6)
     result = audit_gerber(board, images)
+    from manufacturing_check import audit_manufacturing, attach_copper_provenance
+    result['manufacturingAudit'] = audit_manufacturing(board, artwork, images, drills,
+        copper_clearance=args.copper_clearance, annular_ring=args.annular_ring,
+        npth_clearance=args.npth_clearance, hole_clearance=args.hole_clearance,
+        quantization_tolerance=args.quantization_tolerance)
+    attach_copper_provenance(result['manufacturingAudit'], result)
     result['basis'] += '; PTH and NPTH drill material removed from both layers'
-    result['limitations'].append('Ideal nominal drill geometry only; no plating thickness, tolerances, annular-ring or hole-clearance manufacturing verdict.')
+    result['limitations'].append('Additional nominal spacing/ring candidates use explicit test thresholds, not confirmed manufacturer rules; no plating/tolerance or full manufacturing verdict.')
     result['gerberCoverage'] = coverage
     import hashlib
     import os
@@ -108,6 +122,7 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps(result['summary'], ensure_ascii=False))
+    print(json.dumps(result['manufacturingAudit']['summary'], ensure_ascii=False))
     print('Experimental connectivity check; unassigned copper requires review. Report:', args.output)
 
 if __name__ == '__main__':

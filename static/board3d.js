@@ -1581,7 +1581,7 @@ function createPcbAuditPanel() {
   if (!isCadBoard()) return;
   const panel = document.createElement('details');
   panel.className = 'pcb-audit-panel';
-  panel.innerHTML = '<summary>PCB 铜层检查</summary><div class="pcb-audit-body"><p class="pcb-audit-status">正在读取本地报告…</p><p class="pcb-audit-netlist"></p><label>定位未匹配铜块<select aria-label="定位未匹配铜块" disabled><option value="">请选择铜块</option></select></label><p class="pcb-audit-selection">选中后临时隐藏元件，显示真实铜轮廓。</p><p class="pcb-audit-evidence"></p><div class="pcb-audit-actions"><button type="button" class="pcb-audit-clear">清除高亮</button><button type="button" class="pcb-audit-reload">刷新检查</button></div><p>未匹配网络 ≠ 已确认短路。当前仅做铜几何连通性检查，不代表整板可用。</p></div>';
+  panel.innerHTML = '<summary>PCB 铜层检查</summary><div class="pcb-audit-body"><p class="pcb-audit-status">正在读取本地报告…</p><p class="pcb-audit-manufacturing"></p><p class="pcb-audit-netlist"></p><label>定位未匹配铜块<select aria-label="定位未匹配铜块" disabled><option value="">请选择铜块</option></select></label><p class="pcb-audit-selection">选中后临时隐藏元件，显示真实铜轮廓。</p><p class="pcb-audit-evidence"></p><div class="pcb-audit-actions"><button type="button" class="pcb-audit-clear">清除高亮</button><button type="button" class="pcb-audit-reload">刷新检查</button></div><p>未匹配网络 ≠ 已确认短路。当前仅做铜几何连通性检查，不代表整板可用。</p></div>';
   root.append(panel);
   const select = panel.querySelector('select');
   const status = panel.querySelector('.pcb-audit-status');
@@ -1591,6 +1591,7 @@ function createPcbAuditPanel() {
   let clusters = [];
   let schematicByPad = new Map();
   const netlistStatus = panel.querySelector('.pcb-audit-netlist');
+  const manufacturingStatus = panel.querySelector('.pcb-audit-manufacturing');
   const clear = () => { clearPcbAuditHighlight();select.value='';evidence.textContent='';detail.textContent='选中后临时隐藏元件，显示真实铜轮廓。'; };
   select.addEventListener('change', () => {
     const cluster = clusters.find(item => item.id === select.value);
@@ -1612,6 +1613,7 @@ function createPcbAuditPanel() {
   });
   const load = async () => {
     clear();select.disabled=true;status.textContent='正在读取本地报告…';
+    manufacturingStatus.textContent='正在读取间距与孔环宽检查…';
     schematicByPad = new Map();netlistStatus.textContent='正在读取原理图核对…';
     select.replaceChildren(new Option('请选择铜块',''));
     try {
@@ -1622,6 +1624,11 @@ function createPcbAuditPanel() {
       if (CAD.meta?.sourceSha256 && report.inputHashes?.[CAD.meta.sourceDocument] !== CAD.meta.sourceSha256) throw new Error('报告与当前3D源数据不符，请重新转换板数据');
       clusters = [...report.unassignedClusters].sort((a,b)=>b.areaMm2-a.areaMm2);
       status.textContent = `网络冲突 ${report.summary.netConflictClusters} · 断连候选 ${report.summary.unconnectedNets} · 未匹配网络 ${clusters.length}`;
+      const manufacturing = report.manufacturingAudit;
+      if (manufacturing) {
+        const counts = manufacturing.summary, rules = manufacturing.thresholds;
+        manufacturingStatus.textContent = `几何候选：异网铜间距 ${counts.knownNetCopperClearanceCandidates} · 孔环宽 ${counts.annularRingCandidates} · 非金属化孔贴铜 ${counts.npthCopperCandidates} · 孔距 ${counts.holeClearanceCandidates}。另有 ${counts.unresolvedCopperClearanceCandidates} 处铜间距因网络身份待核查（其中 ${counts.copperTextSpacingCandidates ?? '未核对'} 处两侧均有源铜层字形证据）。测试阈值：铜距 ${rules.copperClearanceMm} / 环宽 ${rules.annularRingMm} / 非金属化孔距铜 ${rules.npthCopperClearanceMm} / 孔距 ${rules.holeClearanceMm} mm；不是已确认的制造规则。`;
+      } else { manufacturingStatus.textContent='尚未生成间距与孔环宽报告。'; }
       const pth = report.gerberCoverage?.['Gerber_Drill_PTH.DRL'];
       const npth = report.gerberCoverage?.['Gerber_Drill_NPTH.DRL'];
       if (pth && npth) status.textContent += `。已扣除 ${pth.hits+npth.hits} 个钻孔（含 ${pth.slots+npth.slots} 个槽孔）`;
@@ -1637,7 +1644,7 @@ function createPcbAuditPanel() {
         netlistStatus.textContent = `原理图：匹配 ${summary.matchedTerminals}/${summary.schematicPins} 引脚 · NC ${summary.explicitNoConnectMatched} · 网络差异 ${summary.networkIssues} · 标记异常 ${summary.schematicIssues}。仍待核查：${schematic.missingPcbTerminals.join('、') || '无未匹配位号'}；${summary.unmappedPcbPads} 个焊盘缺元件引用；${summary.labelAliasGroups} 组标签共用连接。`;
         if (select.value) select.dispatchEvent(new Event('change'));
       } catch(error) { netlistStatus.textContent=error.message; }
-    } catch(error) { status.textContent=error.message;netlistStatus.textContent='原理图核对未加载'; }
+    } catch(error) { status.textContent=error.message;netlistStatus.textContent='原理图核对未加载';manufacturingStatus.textContent='间距与孔环宽检查未加载'; }
   };
   panel.querySelector('.pcb-audit-clear').addEventListener('click',clear);
   panel.querySelector('.pcb-audit-reload').addEventListener('click',load);
